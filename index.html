@@ -521,6 +521,7 @@ function onDown(e){
   if(G.confirm){uiTap(p.x,p.y);return}
   if(G.cine){G.cine.t=G.cine.dur;return}
   if(circHit(p,hudBtn.pause)){openPause();return}
+  if(hudBtn.map&&p.x>=hudBtn.map.x&&p.x<=hudBtn.map.x+hudBtn.map.w&&p.y>=hudBtn.map.y&&p.y<=hudBtn.map.y+hudBtn.map.h){G.scene='map';return}
   if(circHit(p,hudBtn.spell)){castSpell();return}
   if(circHit(p,hudBtn.pot)){usePotion();return}
   if(circHit(p,hudBtn.roll)){doRoll();return}
@@ -1684,6 +1685,17 @@ function genLeg(){ // overworld travel leg: a long trail north
   pickups.push({type:'gear:torch',x:mid2[0]*TS+sri(-20,20),y:mid2[1]*TS,r:7,bob:2});
   pickups.push({type:'gear:satchel',x:mid3[0]*TS+sri(-20,20),y:mid3[1]*TS,r:7,bob:4});
  }
+ // a campsite halfway: rest once to mend and save
+ if(!first){
+  const mp=path[(path.length*0.5)|0];
+  props.push({type:'campfire',rest:true,x:mp[0]*TS+sri(-14,14),y:mp[1]*TS,r:8});
+  lights.push({x:mp[0]*TS,y:mp[1]*TS-4,r:65,i:0.85,flick:true});
+ }
+ // road ambushes
+ if(!first)for(let i=0;i<sri(0,2);i++){
+  const ap=path[sri(3,path.length-3)];
+  props.push({type:'ambush',x:ap[0]*TS,y:ap[1]*TS,r:1});
+ }
  // waystone at the trail's end
  props.push({type:'waystone',x:stone.x*TS,y:stone.y*TS,r:10});
  lights.push({x:stone.x*TS,y:stone.y*TS-6,r:55,i:0.7,flick:true});
@@ -1986,6 +1998,25 @@ function updateProps(dt){
      no(){pr.cool=G.time}};
     if(pr.cool&&G.time-pr.cool<2)G.confirm=null;
    }
+  }else if(pr.type==='campfire'&&pr.rest&&!pr.used){
+   if(dist(pr.x,pr.y,P.x,P.y)<14){
+    pr.used=true;
+    P.hp=Math.min(P.maxhp,P.hp+4);P.poison=0;
+    SFX.food();burst(P.x,P.y-8,12,'#ffd8a0',60);
+    pushToast('You rest by the fire. +2 hearts','#ffd8a0');
+    saveRun();
+   }
+  }else if(pr.type==='ambush'&&!pr.used){
+   if(dist(pr.x,pr.y,P.x,P.y)<52){
+    pr.used=true;
+    pushToast('AMBUSH!','#ff6050');SFX.roar();G.trauma=0.6;
+    const n=3+Math.min(4,(G.depth*0.6)|0);
+    for(let i=0;i<n;i++){
+     const a=(i/n)*TAU+rr(-0.3,0.3),d2=rr(50,80);
+     const x=P.x+Math.cos(a)*d2,y=P.y+Math.sin(a)*d2;
+     if(tileAt(x,y)!==T_WALL)spawnEnemy(pickEnemyType(),x,y,{});
+    }
+   }
   }else if(pr.type==='waystone'){
    if(dist(pr.x,pr.y,P.x,P.y)<13&&!pr.used&&!G.cine){
     if(G.depth===0&&!P.gearWeapon){
@@ -2125,18 +2156,28 @@ function updateGame(dt){
  const lookX=joy.mag>0?joy.dx*26:0,lookY=joy.mag>0?joy.dy*26:0;
  G.camX=lerp(G.camX,P.x-VW/2+lookX,dt*6);
  G.camY=lerp(G.camY,P.y-VH/2+lookY,dt*6);
+ // measure how open the space around the player is (throttled raycasts)
+ G.openT=(G.openT||0)-dt;
+ if(G.openT<=0){G.openT=0.12;
+  const rays=[];
+  for(let k=0;k<8;k++){
+   const a=k*Math.PI/4;let d=10;
+   for(;d<=96;d+=6)if(solidAt(P.x+Math.cos(a)*d,P.y-4+Math.sin(a)*d))break;
+   rays.push(Math.min(d,96));
+  }
+  rays.sort((a,b)=>a-b);
+  const narrow=(rays[0]+rays[1]+rays[2]+rays[3])/4;
+  G.openness=lerp(G.openness||48,narrow,0.5);
+ }
  let zt=1;
  if(G.cine){ // intro cinematic: sweep from close-up to wide
   const k=clamp(G.cine.t/G.cine.dur,0,1);
-  zt=lerp(2.3,0.9,k*k*(3-2*k));
- }else if(G.town)zt=1.2; // cozy village
- else if(curB().over&&!G.bossFight)zt=0.9; // wide open-road travel
- else if(G.bossFight&&G.boss&&!G.boss.dead){zt=G.boss.st==='intro'?1.4:1.05}
- else{
-  let cur=null;
-  for(const r of rooms)if(P.x>=r.x*TS&&P.x<(r.x+r.w)*TS&&P.y>=r.y*TS&&P.y<(r.y+r.h)*TS){cur=r;break}
-  if(cur){const a2=cur.w*cur.h;zt=a2<72?1.9:a2<108?1.7:1.5}
-  else zt=0.85; // corridors pull way back
+  zt=lerp(2.3,1.15,k*k*(3-2*k));
+ }else if(G.bossFight&&G.boss&&!G.boss.dead){zt=G.boss.st==='intro'?1.4:1.05}
+ else{ // zoomed-in by default; only narrow passages pull the camera back
+  const t2=clamp(((G.openness||48)-16)/(52-16),0,1);
+  zt=lerp(0.85,1.55,t2);
+  if(G.town)zt=Math.min(zt,1.35);
  }
  G.zoomT=zt;
  G.zoom=lerp(G.zoom||1,G.zoomT,dt*3);
@@ -2504,6 +2545,7 @@ function drawHUD(){
    g.fillStyle='rgba(10,8,16,0.6)';g.fillRect(mx-14,my+24,MM+14,5);
    g.fillStyle='#8cdcff';g.fillRect(mx-13,my+25,(MM+12)*prog,3);
    txtO('to '+dest+' '+((prog*100)|0)+'%',mx+MM-58+29,my+38,6,'#a8cce0','right');
+   hudBtn.map={x:mx-14,y:my+22,w:MM+14,h:20};
   }
  }else{
  g.fillStyle='rgba(10,8,16,0.55)';g.fillRect(mx,my,MM,MM);
@@ -2727,11 +2769,53 @@ function drawSettings(){
  btn(px+pw/2-40,y,80,24,'BACK',()=>{G.scene=G.pauseFrom==='game'?'pause':'title'});
  drawToastsMenu();
 }
+function drawMap(){
+ drawWorld();dimBg();
+ txtO('THE LONG ROAD NORTH',VW/2,26,13,'#e8e4ff','center',true);
+ const x0=VW/2,top=52,bh=Math.min(74,(VH-140)/6.2),gap=18;
+ // draw from bottom (Greenwood) to top (Warden)
+ for(let b=0;b<CFG.biomes;b++){
+  const B=BIOMES[b];
+  const y=top+(CFG.biomes-1-b)*(bh+gap);
+  const done=G.biome>b,here=G.biome===b&&!G.town;
+  rrect(x0-70,y,140,bh,5);
+  g.fillStyle=done?'rgba(30,40,30,0.9)':B.f1;g.globalAlpha=done?0.55:0.95;g.fill();g.globalAlpha=1;
+  g.lineWidth=here?2:1;g.strokeStyle=here?'#ffe080':(done?'#4a5a4a':'#5a5488');g.stroke();g.lineWidth=1;
+  txtO(B.name,x0,y+13,8,done?'#7a8a7a':'#e8e4ff','center',true);
+  txt(B.over?'overland':'underground',x0,y+25,6,done?'#5a6a5a':'#8a86a8','center');
+  if(done)txtO('✓',x0+56,y+13,10,'#7ac87a','center',true);
+  // boss skull marker at top edge of the band
+  g.fillStyle=done?'#4a5a4a':'#c8c4e8';
+  g.fillRect(x0-3,y-3,6,5);g.fillStyle=done?'#2a3a2a':'#20182a';
+  g.fillRect(x0-2,y-2,1,2);g.fillRect(x0+1,y-2,1,2);
+  // town dot between bands
+  if(b<CFG.biomes-1){
+   const ty2=y-gap/2-1;
+   const tdone=G.biome>b||(G.biome===b&&G.town);
+   g.fillStyle=tdone?'#ffd860':'#5a5488';
+   g.beginPath();g.arc(x0-52,ty2,3,0,TAU);g.fill();
+   txt(TOWNS[b],x0-44,ty2+2,7,tdone?'#ffe0a0':'#8a86a8');
+   if(G.town&&G.biome===b){txtO('◄ you',x0+28,ty2+2,7,'#ffe080')}
+  }
+  // player marker inside current band
+  if(here){
+   const prog=G.floor>=CFG.floorsPerBiome?0.85:(G.floor+0.5)/(CFG.floorsPerBiome+1);
+   const py2=y+bh-6-(bh-12)*prog;
+   const spr=SPR.hero[P.cls].r[(G.titleT*4|0)%2];
+   g.drawImage(spr,x0+44,py2-10);
+   G.titleT+=STEP;
+  }
+ }
+ txtO('THE WARDEN',x0,top-10,8,'#ff8070','center',true);
+ btn(VW/2-50,VH-44,100,26,'BACK',()=>{G.scene='game'});
+ drawToastsMenu();
+}
 function drawPause(){
  drawWorld();drawHUD();dimBg();
  const pw=Math.min(200,VW-40),px=VW/2-pw/2;let y=VH*0.24;
- panel(px,y,pw,190,'PAUSED');y+=30;
+ panel(px,y,pw,220,'PAUSED');y+=30;
  btn(px+14,y,pw-28,26,'RESUME',closePause);y+=32;
+ btn(px+14,y,pw-28,24,'WORLD MAP',()=>{G.scene='map'});y+=30;
  btn(px+14,y,pw-28,24,'SETTINGS',()=>{G.pauseFrom='game';G.scene='settings'});y+=30;
  btn(px+14,y,pw-28,24,'CLEAN SCREENSHOT',()=>{G.hudHidden=true;G.scene='game'},{size:9,sub:''});y+=30;
  btn(px+14,y,pw-28,24,'ABANDON RUN',()=>{
@@ -2875,6 +2959,7 @@ function render(){
   case 'game':drawWorld();drawHUD();break;
   case 'cards':drawCards();break;
   case 'pause':drawPause();break;
+  case 'map':drawMap();break;
   case 'death':drawDeath();break;
   case 'win':drawWin();break;
  }
