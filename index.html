@@ -104,7 +104,7 @@ function loadMeta(){
 function saveMeta(){lsSet(META_KEY,JSON.stringify(meta))}
 function saveRun(){
  if(!P||!G.inRun)return;
- const d={v:1,seed:G.seed,daily:G.daily,cls:P.cls,biome:G.biome,floor:G.floor,surface:G.surface,
+ const d={v:2,seed:G.seed,daily:G.daily,cls:P.cls,biome:G.biome,floor:G.floor,town:G.town,
   kills:G.kills,goldRun:G.goldRun,time:G.time,
   p:{maxhp:P.maxhp,hp:Math.max(2,P.hp),dmg:P.dmg,spd:P.spd,rate:P.rate,crit:P.crit,armor:P.armor,luck:P.luck,
    pickupR:P.pickupR,goldMul:P.goldMul,projN:P.projN,pierce:P.pierce,bounce:P.bounce,projSize:P.projSize,
@@ -114,7 +114,7 @@ function saveRun(){
    gearWeapon:P.gearWeapon,gearTorch:P.gearTorch,gearSatchel:P.gearSatchel}};
  lsSet(RUN_KEY,JSON.stringify(d));
 }
-function loadRun(){const raw=lsGet(RUN_KEY);if(!raw)return null;try{const d=JSON.parse(raw);return d&&d.v===1?d:null}catch(e){return null}}
+function loadRun(){const raw=lsGet(RUN_KEY);if(!raw)return null;try{const d=JSON.parse(raw);return d&&d.v===2?d:null}catch(e){return null}}
 function clearRun(){lsDel(RUN_KEY)}
 function exportSave(){
  const s=btoa(unescape(encodeURIComponent(JSON.stringify({m:meta,r:loadRun()}))));
@@ -425,12 +425,18 @@ const BOSS_NAMES=['SKELETON KING','BROODMOTHER','FROST WYRM','MAGMA GOLEM','WARD
 
 /* ---------------- BIOMES ---------------- */
 const BIOMES=[
- {name:'CATACOMBS',     f1:'#3b4050',f2:'#363b4a',grout:'#2d3240',wall:'#20242f',wallTop:'#4d5468',amb:'rgba(8,9,22,0.82)', lc:'255,190,120',haz:'spikes',part:'drip',   hazCol:'#8a8f9d'},
- {name:'VERDANT SWAMP', f1:'#3d5540',f2:'#375039',grout:'#2c4030',wall:'#22301e',wallTop:'#4e6a45',amb:'rgba(6,18,10,0.8)',  lc:'170,255,150',haz:'poison',part:'firefly',hazCol:'#5aa030'},
- {name:'FROZEN DEPTHS', f1:'#4c5d75',f2:'#46566c',grout:'#3a4a60',wall:'#2a3950',wallTop:'#6e84a5',amb:'rgba(8,14,32,0.78)', lc:'160,210,255',haz:'ice',   part:'snow',   hazCol:'#bcd8f0'},
- {name:'MOLTEN CORE',   f1:'#4f3a34',f2:'#48342e',grout:'#3a2a26',wall:'#2c1e1a',wallTop:'#6b4a40',amb:'rgba(24,7,5,0.72)',  lc:'255,140,60', haz:'lava',  part:'ember',  hazCol:'#ff7020'},
- {name:'ASTRAL GAUNTLET',f1:'#2e2a44',f2:'#292540',grout:'#221e36',wall:'#171430',wallTop:'#4a4470',amb:'rgba(7,3,20,0.85)', lc:'200,150,255',haz:'void',  part:'star',   hazCol:'#a070ff'},
+ {name:'GREENWOOD',    over:true, f1:'#2c3e26',f2:'#31452a',grout:'#22301e',wall:'#1c2818',wallTop:'#3c5c30',amb:'rgba(7,10,8,0.55)',  lc:'190,230,140',haz:'spikes',part:'firefly',hazCol:'#4a7a2e'},
+ {name:'MIREFEN',      over:true, f1:'#3a4f38',f2:'#354a33',grout:'#2a3c2a',wall:'#20301e',wallTop:'#4a6a42',amb:'rgba(6,14,9,0.62)',  lc:'170,255,150',haz:'poison',part:'drip',   hazCol:'#5aa030'},
+ {name:'FROSTFELL',    over:true, f1:'#5a6c84',f2:'#54657c',grout:'#465872',wall:'#32425c',wallTop:'#8ea3c0',amb:'rgba(10,16,34,0.52)',lc:'170,215,255',haz:'ice',   part:'snow',   hazCol:'#cfe2f5'},
+ {name:'THE UNDERDARK',over:false,f1:'#2e2a44',f2:'#292540',grout:'#221e36',wall:'#171430',wallTop:'#4a4470',amb:'rgba(7,3,20,0.85)', lc:'200,150,255',haz:'void',  part:'star',   hazCol:'#a070ff'},
+ {name:'ASHLANDS',     over:true, f1:'#463430',f2:'#402f2b',grout:'#342622',wall:'#241814',wallTop:'#5e4038',amb:'rgba(22,8,5,0.6)',  lc:'255,140,60', haz:'lava',  part:'ember',  hazCol:'#ff7020'},
 ];
+const TOWNS=['OAKREST','MOSSFORD','DEEPGATE','CINDERFALL'];
+const TOWN_LINES=[
+ 'Last friendly hearth before the fen.',
+ 'They build on stilts here, above the rot.',
+ 'A mining town. The shaft below breathes.',
+ 'Ash falls like snow. The Warden is near.'];
 
 /* ---------------- INPUT & UI ---------------- */
 const cv=document.getElementById('cv');
@@ -576,13 +582,11 @@ let toasts=[];
 function pushToast(t,col){toasts.push({t,col:col||'#fff',life:2.6});if(toasts.length>4)toasts.shift()}
 
 /* ---------------- GAME STATE ---------------- */
-const SURF={name:'THE SURFACE',wall:'#1c2818',wallTop:'#3a5a2e',f1:'#2a3a24',f2:'#2f4128',
- grout:'#20301c',amb:'rgba(7,10,8,0.55)',part:'firefly',haz:'none',lc:'160,210,130'};
-function curB(){return G.surface?SURF:BIOMES[G.biome]}
+function curB(){return BIOMES[clamp(G.biome,0,BIOMES.length-1)]}
 let G={scene:'title',inRun:false,seed:0,daily:false,biome:0,floor:0,depth:0,
  kills:0,goldRun:0,time:0,trauma:0,hitstop:0,wipe:null,bossFight:false,boss:null,
  confirm:null,pauseFrom:null,hudHidden:false,lowHpT:0,drainT:0,frameMs:16,partMul:1,
- lavaFrame:0,lavaT:0,spikeT:0,titleT:0,deathStats:null,camX:0,camY:0,shopMsgT:0,zoom:1,zoomT:1,surface:false,cine:null};
+ lavaFrame:0,lavaT:0,spikeT:0,titleT:0,deathStats:null,camX:0,camY:0,shopMsgT:0,zoom:1,zoomT:1,town:false,cine:null,legFrom:0,legTo:0};
 let P=null;
 let tiles=null,mapW=0,mapH=0,rooms=[],roomIdx=null,floorCvs=[null,null],lights=[],pools=[];
 let enemies=[],shots=[],eshots=[],pickups=[],props=[],parts=[],dnums=[];
@@ -644,22 +648,34 @@ function genFloor(){
  G.bossFight=false;G.boss=null;
  const isBoss=G.floor===CFG.floorsPerBiome;
  const B=curB();
+ if(G.town){genTown();return}
  if(isBoss){
-  mapW=34;mapH=28;tiles=new Uint8Array(mapW*mapH); // all wall
-  carveRect(4,4,mapW-8,mapH-8);
-  // pillars
-  for(const [px,py] of [[9,9],[mapW-11,9],[9,mapH-11],[mapW-11,mapH-11]]){
-   setTile(px,py,T_WALL);setTile(px+1,py,T_WALL);setTile(px,py+1,T_WALL);setTile(px+1,py+1,T_WALL);
+  mapW=34;mapH=30;tiles=new Uint8Array(mapW*mapH); // all wall
+  if(B.over){ // open-air arena: a great clearing with boulders
+   const cx=mapW/2,cy=mapH/2;
+   for(let j=0;j<mapH;j++)for(let i=0;i<mapW;i++){
+    const dx=(i+0.5-cx)/(mapW/2-3),dy=(j+0.5-cy)/(mapH/2-3);
+    if(dx*dx+dy*dy<=1)setTile(i,j,T_FLOOR);
+   }
+   for(const [px,py] of [[9,9],[mapW-11,9],[9,mapH-11],[mapW-11,mapH-11]]){
+    setTile(px,py,T_WALL);setTile(px+1,py,T_WALL);
+   }
+  }else{
+   carveRect(4,4,mapW-8,mapH-8);
+   for(const [px,py] of [[9,9],[mapW-11,9],[9,mapH-11],[mapW-11,mapH-11]]){
+    setTile(px,py,T_WALL);setTile(px+1,py,T_WALL);setTile(px,py+1,T_WALL);setTile(px+1,py+1,T_WALL);
+   }
+   addWallTorches(10);
   }
-  rooms=[{x:4,y:4,w:mapW-8,h:mapH-8,type:'boss',seen:true,pat:2}];
+  rooms=[{x:3,y:3,w:mapW-6,h:mapH-6,type:'boss',seen:true,pat:2}];
   buildRoomIdx();
-  P.x=mapW*TS/2;P.y=(mapH-8)*TS;
+  P.x=mapW*TS/2;P.y=(mapH-7)*TS;
   spawnBoss(G.biome, mapW*TS/2, 9*TS);
-  addWallTorches(10);
   bakeFloor();
   centerCam();
   return;
  }
+ if(B.over){genLeg();return}
  mapW=CFG.mapW;mapH=CFG.mapH;
  tiles=new Uint8Array(mapW*mapH);
  rooms=[];
@@ -805,10 +821,10 @@ function bakeFloor(){
     if(ty+1<mapH&&tiles[(ty+1)*mapW+tx]!==T_WALL&&tiles[(ty+1)*mapW+tx]!==T_CRACK){
      x.fillStyle=B.wallTop;x.fillRect(px,py+TS-5,TS,5);
      x.fillStyle=shade(B.wallTop,-0.35);x.fillRect(px,py+TS-1,TS,1);
-     if(rA<0.16&&!G.surface)drawWallDecor(x,px,py,rB,rC);
-     if(G.surface){
-      x.fillStyle='#4a6a38';x.fillRect(px+2+(rB*8|0),py+2+(rC*6|0),3,2);
-      if(rA<0.3){x.fillStyle='#2c2018';x.fillRect(px+6,py+TS-5,3,4)}
+     if(rA<0.16&&!curB().over)drawWallDecor(x,px,py,rB,rC);
+     if(curB().over){ // canopy / crag texture from biome palette
+      x.fillStyle=shade(B.wallTop,0.12);x.fillRect(px+2+(rB*8|0),py+2+(rC*6|0),3,2);
+      if(rA<0.3){x.fillStyle=shade(B.wall,-0.3);x.fillRect(px+6,py+TS-5,3,4)}
      }
     }
     if(rA<0.1){x.fillStyle=shade(B.wall,0.08);x.fillRect(px+(rB*12|0),py+(rC*10|0),2,2)}
@@ -881,7 +897,7 @@ function bakeFloor(){
 }
 function drawFloorDecal(x,px,py,rB,rC){
  const ox=px+1+(rB*10|0),oy=py+1+(rC*10|0);
- if(G.surface){
+ if(curB().over&&G.biome===0){ // greenwood grass, flowers, pebbles
   if(rB<0.55){x.fillStyle='#4a6a34';x.fillRect(ox,oy,1,3);x.fillRect(ox+2,oy+1,1,2);x.fillRect(ox+4,oy,1,3)}
   else if(rB<0.8){x.fillStyle=rC<0.5?'#d8c860':'#c87890';x.fillRect(ox+1,oy,2,2);x.fillStyle='#4a6a34';x.fillRect(ox+1,oy+2,1,2)}
   else{x.fillStyle='rgba(120,120,130,0.5)';x.fillRect(ox,oy,3,2)}
@@ -1539,7 +1555,7 @@ function onBossDeath(e){
  for(const o of enemies)if(!o.boss&&!o.dead&&o.type!=='gen')o.hp=Math.min(o.hp,1);
  const c={x:e.x,y:e.y};
  props.push({type:'chest',x:c.x,y:c.y+20,r:8,opened:false,mimic:false,rich:true});
- props.push({type:'exit',x:c.x,y:c.y-10,r:10,free:true});
+ props.push(curB().over?{type:'waystone',x:c.x,y:c.y-14,r:10}:{type:'exit',x:c.x,y:c.y-10,r:10,free:true});
  pushToast(e.name+' FALLS!','#ffd860');
  meta.best.depth=Math.max(meta.best.depth,G.depth+1);
  saveMeta();
@@ -1579,89 +1595,164 @@ function startRun(cls,seed,daily){
  G.trauma=0;G.hitstop=0;G.deathStats=null;
  newPlayer(cls);
  meta.stats.runs++;saveMeta();
- G.surface=true;
- genSurface();
+ G.town=false;
+ genFloor();
  G.cine={t:0,dur:4.8,lines:[
-  [0,'The village lights are dying, one by one.'],
-  [2.4,'Whatever poisons the land sleeps below.']]};
+  [0,'The northern towns have gone silent.'],
+  [2.4,'Someone must walk the long road and learn why.']]};
  wipeTo('game');
 }
-function enterDungeon(){
+function enterTown(){
+ G.town=true;
  SFX.door();
- G.cine=null;
  wipeThen(()=>{
-  G.surface=false;G.biome=0;G.floor=0;G.depth=0;
   genFloor();
-  pushToast('THE GAUNTLET — '+BIOMES[0].name,'#e0d8ff');
+  pushToast('You arrive in '+TOWNS[G.biome],'#ffe0a0');
+  pushToast(TOWN_LINES[G.biome],'#a8a4c8');
  });
 }
-function genSurface(){
- R=mulberry32((G.seed^0x5157F0CE)>>>0);
- enemies=[];shots=[];eshots=[];pickups=[];props=[];pools=[];lights=[];dnums=[];
- G.bossFight=false;G.boss=null;
- mapW=40;mapH=46;tiles=new Uint8Array(mapW*mapH); // all wall (treeline)
- // organic clearing: overlapping ellipses along a winding path bottom -> top
+function leaveTown(){
+ G.town=false;G.biome++;G.floor=0;
+ G.depth=G.biome*(CFG.floorsPerBiome+1)+G.floor;
+ SFX.door();
+ wipeThen(()=>{
+  genFloor();
+  pushToast(curB().over?'The road continues — '+curB().name:'You descend — '+curB().name,'#e0d8ff');
+ });
+}
+function genLeg(){ // overworld travel leg: a long trail north
+ mapW=44;mapH=72;tiles=new Uint8Array(mapW*mapH); // all wall (treeline/rock)
+ const first=G.depth===0&&!P.gearWeapon;
+ // winding clearings bottom -> top
  const path=[[mapW/2,mapH-8]];
  let px2=mapW/2,py2=mapH-8;
- while(py2>9){py2-=sri(4,6);px2=clamp(px2+sri(-5,5),9,mapW-9);path.push([px2,py2])}
- const gate={x:px2,y:py2-1};
+ while(py2>8){py2-=sri(4,6);px2=clamp(px2+sri(-6,6),9,mapW-9);path.push([px2,py2])}
+ const stone={x:px2,y:py2-1};
  for(const [cx,cy] of path){
-  const rx=sri(5,8),ry=sri(4,6);
+  const rx=sri(5,9),ry=sri(4,6);
   for(let j=-ry;j<=ry;j++)for(let i=-rx;i<=rx;i++){
-   const dx=i/rx,dy=j/ry;
-   if(dx*dx+dy*dy<=1)setTile((cx+i)|0,(cy+j)|0,T_FLOOR);
+   if(i*i/(rx*rx)+j*j/(ry*ry)<=1)setTile((cx+i)|0,(cy+j)|0,T_FLOOR);
   }
  }
- // scattered tree clumps back inside the clearing
- for(let k=0;k<14;k++){
+ // scattered terrain clumps (trees / boulders / cacti)
+ for(let k=0;k<26;k++){
   const tx=sri(4,mapW-4),ty=sri(4,mapH-4);
   if(tiles[ty*mapW+tx]!==T_FLOOR)continue;
   if(Math.hypot(tx-mapW/2,ty-(mapH-8))<6)continue;
-  if(Math.hypot(tx-gate.x,ty-gate.y)<5)continue;
+  if(Math.hypot(tx-stone.x,ty-stone.y)<5)continue;
   setTile(tx,ty,T_WALL);if(src(0.6))setTile(tx+1,ty,T_WALL);if(src(0.4))setTile(tx,ty+1,T_WALL);
  }
+ // hazard patches along the trail
+ const hn=sri(6,10)+G.depth;
+ for(let k=0;k<hn;k++){
+  const p=path[sri(1,path.length-2)];
+  const tx=clamp((p[0]+sri(-5,5))|0,2,mapW-3),ty=clamp((p[1]+sri(-3,3))|0,2,mapH-3);
+  for(let j=0;j<sri(1,3);j++)for(let i=0;i<sri(1,3);i++)
+   if(tiles[(ty+j)*mapW+tx+i]===T_FLOOR&&Math.hypot((tx+i)*TS-mapW/2*TS,(ty+j)*TS-(mapH-8)*TS)>40)setTile(tx+i,ty+j,T_HAZ);
+ }
  rooms=[];buildRoomIdx();
- // camp at the bottom of the trail
  P.x=mapW/2*TS;P.y=(mapH-8)*TS;
- props.push({type:'campfire',x:P.x-2,y:P.y-22,r:8});
- lights.push({x:P.x-2,y:P.y-24,r:70,i:0.9,flick:true});
- spawnEnemy('barrel',P.x+26,P.y-14,{noAnim:true,elite:false});
- spawnEnemy('barrel',P.x-30,P.y-8,{noAnim:true,elite:false});
- // gear along the trail
- const mid1=path[(path.length*0.35)|0],mid2=path[(path.length*0.6)|0],mid3=path[(path.length*0.8)|0];
- if(!P.gearWeapon)pickups.push({type:'gear:sword',x:mid1[0]*TS+sri(-20,20),y:mid1[1]*TS,r:7,bob:0});
- if(!P.gearTorch)pickups.push({type:'gear:torch',x:mid2[0]*TS+sri(-20,20),y:mid2[1]*TS,r:7,bob:2});
- if(!P.gearSatchel)pickups.push({type:'gear:satchel',x:mid3[0]*TS+sri(-20,20),y:mid3[1]*TS,r:7,bob:4});
- // a couple of night critters near the entrance
- const c1=path[path.length-2];
- spawnEnemy('spider',c1[0]*TS+18,c1[1]*TS,{noAnim:true,elite:false});
- spawnEnemy('spider',c1[0]*TS-20,c1[1]*TS+10,{noAnim:true,elite:false});
- // the dungeon gate
- props.push({type:'dgate',x:gate.x*TS,y:gate.y*TS,r:12});
- lights.push({x:gate.x*TS,y:gate.y*TS-6,r:52,i:0.65,col:'150,110,255',flick:true});
+ G.legFrom=P.y;G.legTo=stone.y*TS;
+ // populate: foes, generators, chests, shrine, crates, food along the way
+ const foes=(first?3:sri(6,9))+Math.min(8,(G.depth*1.2)|0);
+ for(let i=0;i<foes;i++){
+  const p=path[sri(first?Math.max(2,path.length-4):2,path.length-2)];
+  const x=p[0]*TS+sri(-40,40),y=p[1]*TS+sri(-24,24);
+  if(tileAt(x,y)!==T_WALL)spawnEnemy(first?'spider':pickEnemyType(),x,y,{noAnim:true});
+ }
+ if(!first)for(let i=0;i<sri(1,2);i++){
+  const p=path[sri(3,path.length-3)];
+  if(tileAt(p[0]*TS,p[1]*TS)===T_FLOOR)spawnGenerator(p[0]*TS+sri(-20,20),p[1]*TS);
+ }
+ for(let i=0;i<sri(1,2);i++){
+  const p=path[sri(2,path.length-2)];
+  props.push({type:'chest',x:p[0]*TS+sri(-26,26),y:p[1]*TS,r:8,opened:false,mimic:!first&&src(0.18),rich:false});
+ }
+ if(!first&&src(0.4)){const p=path[sri(2,path.length-2)];
+  props.push({type:'shrine',x:p[0]*TS+sri(-20,20),y:p[1]*TS,r:9})}
+ for(let i=0;i<sri(2,4);i++){const p=path[sri(1,path.length-2)];
+  const x=p[0]*TS+sri(-30,30),y=p[1]*TS+sri(-16,16);
+  if(tileAt(x,y)===T_FLOOR)spawnEnemy('barrel',x,y,{noAnim:true,elite:false})}
+ for(let i=0;i<sri(1,3);i++){const p=path[sri(1,path.length-2)];
+  pickups.push({type:src(0.6)?'food':'coin',x:p[0]*TS+sri(-24,24),y:p[1]*TS,r:6,v:2,bob:R()*6})}
+ // run start: camp, cinematic gear trail
+ if(first){
+  props.push({type:'campfire',x:P.x-2,y:P.y-22,r:8});
+  lights.push({x:P.x-2,y:P.y-24,r:70,i:0.9,flick:true});
+  const mid1=path[(path.length*0.3)|0],mid2=path[(path.length*0.55)|0],mid3=path[(path.length*0.78)|0];
+  pickups.push({type:'gear:sword',x:mid1[0]*TS+sri(-20,20),y:mid1[1]*TS,r:7,bob:0});
+  pickups.push({type:'gear:torch',x:mid2[0]*TS+sri(-20,20),y:mid2[1]*TS,r:7,bob:2});
+  pickups.push({type:'gear:satchel',x:mid3[0]*TS+sri(-20,20),y:mid3[1]*TS,r:7,bob:4});
+ }
+ // waystone at the trail's end
+ props.push({type:'waystone',x:stone.x*TS,y:stone.y*TS,r:10});
+ lights.push({x:stone.x*TS,y:stone.y*TS-6,r:55,i:0.7,flick:true});
+ bakeFloor();
+ centerCam();
+ saveRun();
+}
+function genTown(){ // safe hub between regions
+ R=mulberry32((G.seed^((G.biome+1)*0x9E3779B9))>>>0);
+ enemies=[];shots=[];eshots=[];pickups=[];props=[];pools=[];lights=[];dnums=[];
+ G.bossFight=false;G.boss=null;
+ mapW=34;mapH=32;tiles=new Uint8Array(mapW*mapH);
+ const cx=mapW/2,cy=mapH/2;
+ for(let j=0;j<mapH;j++)for(let i=0;i<mapW;i++){
+  const dx=(i+0.5-cx)/(mapW/2-3),dy=(j+0.5-cy)/(mapH/2-3);
+  if(dx*dx+dy*dy<=1)setTile(i,j,T_FLOOR);
+ }
+ rooms=[];buildRoomIdx();
+ P.x=cx*TS;P.y=(mapH-7)*TS;
+ // village square
+ props.push({type:'campfire',x:cx*TS,y:(cy+3)*TS,r:8});
+ lights.push({x:cx*TS,y:(cy+3)*TS-2,r:85,i:0.95,flick:true});
+ // huts (solid 3x2 with drawn roofs)
+ const huts=[[cx-9,cy-2],[cx+6,cy-3],[cx-7,cy+5],[cx+7,cy+4]];
+ for(const [hx,hy] of huts){
+  for(let j=0;j<2;j++)for(let i=0;i<3;i++)setTile((hx+i)|0,(hy+j)|0,T_WALL);
+  props.push({type:'hut',x:(hx+1.5)*TS,y:(hy+2)*TS,r:0});
+ }
+ // healer / merchant row / anvil / innkeep
+ props.push({type:'healer',x:(cx-6)*TS,y:(cy+1)*TS,r:9});
+ lights.push({x:(cx-6)*TS,y:(cy+1)*TS-6,r:45,i:0.6,flick:true});
+ props.push({type:'merch',x:(cx+5)*TS,y:(cy+1)*TS,r:9});
+ const kinds=[['pot:heal',22],['key',30],['card',45],['tier',60+P.tier*30]];
+ kinds.slice(0,3).forEach((k,i)=>{
+  props.push({type:'ware',kind:k[0],price:k[1],x:(cx+4+i*1.6)*TS,y:(cy+2.6)*TS,r:7});
+ });
+ props.push({type:'anvil',x:(cx+1)*TS,y:(cy-4)*TS,r:9});
+ props.push({type:'inn',x:(cx-4)*TS,y:(cy-4)*TS,r:9});
+ lights.push({x:(cx-4)*TS,y:(cy-4)*TS-8,r:50,i:0.65,flick:true});
+ spawnEnemy('barrel',(cx-2)*TS,(cy+5)*TS,{noAnim:true,elite:false});
+ // north gate to the next region
+ const under=!BIOMES[G.biome+1]||!BIOMES[G.biome+1].over;
+ props.push({type:'towngate',under,x:cx*TS,y:5*TS,r:12});
+ lights.push({x:cx*TS,y:5*TS-6,r:55,i:0.7,flick:true});
  bakeFloor();
  centerCam();
  saveRun();
 }
 function resumeRun(d){
  G.inRun=true;G.seed=d.seed;G.daily=d.daily;G.biome=d.biome;G.floor=d.floor;
- G.surface=!!d.surface;G.cine=null;
+ G.town=!!d.town;G.cine=null;
  G.depth=G.biome*(CFG.floorsPerBiome+1)+G.floor;
  G.kills=d.kills;G.goldRun=d.goldRun;G.time=d.time||0;G.deathStats=null;
  newPlayer(d.cls);
  Object.assign(P,d.p);
- if(G.surface)genSurface();else genFloor();
+ genFloor();
  wipeTo('game');
- pushToast('Run resumed — '+curB().name,'#a0e0ff');
+ pushToast('Run resumed — '+(G.town?TOWNS[G.biome]:curB().name),'#a0e0ff');
 }
 function nextFloor(){
  G.floor++;
- if(G.floor>CFG.floorsPerBiome){G.biome++;G.floor=0;
-  if(G.biome>=CFG.biomes){winRun();return}}
+ if(G.floor>CFG.floorsPerBiome){
+  if(G.biome>=CFG.biomes-1){winRun();return}
+  enterTown();return;
+ }
  G.depth=G.biome*(CFG.floorsPerBiome+1)+G.floor;
  SFX.door();
  wipeThen(()=>{genFloor();
-  pushToast(curB().name+(G.floor===CFG.floorsPerBiome?' — BOSS':' '+(G.floor+1)),'#e0d8ff');
+  pushToast(curB().name+(G.floor===CFG.floorsPerBiome?' — '+(curB().over?'SOMETHING GUARDS THE ROAD':'BOSS'):' — leg '+(G.floor+1)),'#e0d8ff');
  });
 }
 function bankGold(){
@@ -1849,6 +1940,7 @@ function updatePickups(dt){
  }
 }
 function updateProps(dt){
+ if(G.wipe)return;
  for(const pr of props){
   if(pr.type==='exit'){
    if(dist(pr.x,pr.y,P.x,P.y)<12){
@@ -1894,16 +1986,38 @@ function updateProps(dt){
      no(){pr.cool=G.time}};
     if(pr.cool&&G.time-pr.cool<2)G.confirm=null;
    }
-  }else if(pr.type==='dgate'){
-   if(dist(pr.x,pr.y,P.x,P.y)<15&&!G.confirm&&!G.cine){
-    if(!P.gearWeapon){
+  }else if(pr.type==='waystone'){
+   if(dist(pr.x,pr.y,P.x,P.y)<13&&!pr.used&&!G.cine){
+    if(G.depth===0&&!P.gearWeapon){
      if(!pr.msgT||G.time-pr.msgT>2.5){pr.msgT=G.time;
       pushToast('You are unarmed. Search the trail for a weapon.','#ffd0a0');SFX.deny()}
-    }else{
-     G.confirm={text:'THE GAUNTLET\nThe stair breathes cold air.\nDescend?',
-      yes(){enterDungeon()},no(){pr.cool=G.time}};
+    }else{pr.used=true;pushToast('The waystone hums. Onward.','#c8e8ff');nextFloor()}
+   }
+  }else if(pr.type==='towngate'){
+   if(dist(pr.x,pr.y,P.x,P.y)<15&&!G.confirm&&!pr.used){
+    const nb=BIOMES[G.biome+1];
+    G.confirm={text:(pr.under?'THE SHAFT\nCold air rises from the dark.\nDescend into '+nb.name+'?':'THE NORTH ROAD\nLeave for '+nb.name+'?'),
+     yes(){pr.used=true;leaveTown()},no(){pr.cool=G.time}};
+    if(pr.cool&&G.time-pr.cool<2)G.confirm=null;
+   }
+  }else if(pr.type==='healer'){
+   if(dist(pr.x,pr.y,P.x,P.y)<13&&!G.confirm){
+    const cost=10+G.biome*8;
+    if(P.hp>=P.maxhp){if(!pr.msgT||G.time-pr.msgT>3){pr.msgT=G.time;
+     pushToast('Healer: "You look hale enough, traveler."','#a8d8c0')}}
+    else{
+     G.confirm={text:'HEALER\nRestore all hearts for '+cost+' gold?',
+      yes(){if(P.gold<cost){pushToast('Not enough gold','#f88');return}
+       P.gold-=cost;P.hp=P.maxhp;P.poison=0;SFX.food();
+       burst(P.x,P.y-8,14,'#7ae87a',70);pushToast('You feel whole again.','#7ae87a')},
+      no(){pr.cool=G.time}};
      if(pr.cool&&G.time-pr.cool<2)G.confirm=null;
     }
+   }
+  }else if(pr.type==='inn'){
+   if(dist(pr.x,pr.y,P.x,P.y)<13){
+    if(!pr.msgT||G.time-pr.msgT>4){pr.msgT=G.time;
+     pushToast('Innkeep: "'+rp(['Roads north are worse every season.','A hero passed this way once. Never returned.','Mind the '+ (BIOMES[G.biome+1]?BIOMES[G.biome+1].name:'road')+', friend.','Your run is safe here — rest easy.'])+'"','#e8d8b0')}
    }
   }else if(pr.type==='ware'&&!pr.sold){
    if(dist(pr.x,pr.y,P.x,P.y)<10){
@@ -1964,7 +2078,7 @@ function updateGame(dt){
  if(P.stone>0)P.stone-=dt;
  if(P.comboT>0){P.comboT-=dt;if(P.comboT<=0)P.combo=0}
  // hard mode drain
- if(meta.settings.hard&&!G.surface){G.drainT+=dt;
+ if(meta.settings.hard&&!G.town){G.drainT+=dt;
   if(G.drainT>CFG.hardDrainEvery){G.drainT=0;P.hp--;
    if(P.hp<=0){playerDeath();return}
    if(P.hp===4)pushToast('Your life force ebbs... find food!','#ff9060')}}
@@ -2015,7 +2129,8 @@ function updateGame(dt){
  if(G.cine){ // intro cinematic: sweep from close-up to wide
   const k=clamp(G.cine.t/G.cine.dur,0,1);
   zt=lerp(2.3,0.9,k*k*(3-2*k));
- }else if(G.surface)zt=0.9; // wide open-air exploration
+ }else if(G.town)zt=1.2; // cozy village
+ else if(curB().over&&!G.bossFight)zt=0.9; // wide open-road travel
  else if(G.bossFight&&G.boss&&!G.boss.dead){zt=G.boss.st==='intro'?1.4:1.05}
  else{
   let cur=null;
@@ -2144,16 +2259,49 @@ function drawWorld(){
    g.fillStyle=fl?'#ff8030':'#ffb020';g.fillRect(pr.x-3,pr.y-9,6,5);
    g.fillStyle='#ffe080';g.fillRect(pr.x-2,pr.y-8,3,3);
    if(rc(0.2))addP(pr.x+rr(-3,3),pr.y-9,rr(-4,4),-rr(18,36),rr(0.4,0.9),rp(['#ffb020','#ff8030','#606060']),1.8)}});
-  else if(pr.type==='dgate')ents.push({y:pr.y,d:()=>{
-   g.fillStyle='#3a3444';g.fillRect(pr.x-13,pr.y-26,5,26);g.fillRect(pr.x+8,pr.y-26,5,26);
-   g.fillStyle='#4a4458';g.fillRect(pr.x-13,pr.y-30,26,6);
-   g.fillStyle='#2a2434';g.fillRect(pr.x-12,pr.y-25,3,20);g.fillRect(pr.x+9,pr.y-25,3,20);
-   g.fillStyle='#07060c';g.fillRect(pr.x-8,pr.y-24,16,24);
-   g.fillStyle='#141020';g.fillRect(pr.x-8,pr.y-8,16,3);g.fillStyle='#1c1830';g.fillRect(pr.x-8,pr.y-14,16,3);
+  else if(pr.type==='waystone')ents.push({y:pr.y,d:()=>{
+   drawShadow(pr.x,pr.y+2,8);
+   g.fillStyle='#565064';g.fillRect(pr.x-4,pr.y-18,8,20);
+   g.fillStyle='#6a6480';g.fillRect(pr.x-3,pr.y-18,3,20);
+   g.fillStyle='#3e3a4c';g.fillRect(pr.x-4,pr.y-2,8,4);
    const pu=0.5+0.4*Math.sin(G.time*2.5);
-   g.fillStyle='rgba(150,110,255,'+(pu*0.35)+')';g.fillRect(pr.x-8,pr.y-24,16,24);
-   g.fillStyle='#b090ff';g.fillRect(pr.x-1,pr.y-29,2,4);
-   if(rc(0.08))addP(pr.x+rr(-7,7),pr.y-4,0,-rr(8,20),0.8,'#a070ff',1.5)}});
+   g.fillStyle='rgba(140,220,255,'+(pu*0.8)+')';
+   g.fillRect(pr.x-1,pr.y-14,2,6);g.fillRect(pr.x-2,pr.y-11,4,1);
+   if(rc(0.06))addP(pr.x+rr(-4,4),pr.y-16,0,-rr(8,18),0.7,'#8cdcff',1.5)}});
+  else if(pr.type==='hut')ents.push({y:pr.y,d:()=>{
+   g.fillStyle='#6a4a30';g.fillRect(pr.x-24,pr.y-14,48,4); // eave shadow line
+   g.fillStyle='#7a4a2e';
+   g.beginPath();g.moveTo(pr.x-27,pr.y-12);g.lineTo(pr.x,pr.y-34);g.lineTo(pr.x+27,pr.y-12);g.closePath();g.fill();
+   g.fillStyle='#8f5a38';
+   g.beginPath();g.moveTo(pr.x-27,pr.y-12);g.lineTo(pr.x,pr.y-34);g.lineTo(pr.x+4,pr.y-31);g.lineTo(pr.x-22,pr.y-12);g.closePath();g.fill();
+   g.fillStyle='#3a2a1c';g.fillRect(pr.x-4,pr.y-11,8,10);
+   g.fillStyle='rgba(255,200,110,0.7)';g.fillRect(pr.x-11,pr.y-10,5,4);g.fillRect(pr.x+7,pr.y-10,5,4)}});
+  else if(pr.type==='healer')ents.push({y:pr.y,d:()=>{
+   drawShadow(pr.x,pr.y+2,6);
+   drawSpr(SPR.merch,pr.x,pr.y+2);
+   g.fillStyle='#7ae87a';g.fillRect(pr.x-1,pr.y-19,2,6);g.fillRect(pr.x-3,pr.y-17,6,2);
+   if(rc(0.04))addP(pr.x+rr(-5,5),pr.y-14,0,-rr(6,14),0.7,'#7ae87a',1.5)}});
+  else if(pr.type==='inn')ents.push({y:pr.y,d:()=>{
+   drawShadow(pr.x,pr.y+2,6);
+   g.fillStyle='#5a4430';g.fillRect(pr.x-1,pr.y-16,2,16);
+   g.fillStyle='#caa54a';g.fillRect(pr.x-8,pr.y-16,14,8);
+   g.fillStyle='#7a5a20';g.fillRect(pr.x-7,pr.y-15,12,6);
+   g.fillStyle='#ffe080';g.fillRect(pr.x-5,pr.y-13,3,2);g.fillRect(pr.x,pr.y-13,4,2)}});
+  else if(pr.type==='towngate')ents.push({y:pr.y,d:()=>{
+   if(pr.under){
+    g.fillStyle='#3a3444';g.fillRect(pr.x-13,pr.y-26,5,26);g.fillRect(pr.x+8,pr.y-26,5,26);
+    g.fillStyle='#4a4458';g.fillRect(pr.x-13,pr.y-30,26,6);
+    g.fillStyle='#07060c';g.fillRect(pr.x-8,pr.y-24,16,24);
+    g.fillStyle='#141020';g.fillRect(pr.x-8,pr.y-8,16,3);g.fillStyle='#1c1830';g.fillRect(pr.x-8,pr.y-14,16,3);
+    const pu=0.5+0.4*Math.sin(G.time*2.5);
+    g.fillStyle='rgba(150,110,255,'+(pu*0.35)+')';g.fillRect(pr.x-8,pr.y-24,16,24);
+    if(rc(0.08))addP(pr.x+rr(-7,7),pr.y-4,0,-rr(8,20),0.8,'#a070ff',1.5);
+   }else{
+    g.fillStyle='#6a4a2e';g.fillRect(pr.x-12,pr.y-24,4,24);g.fillRect(pr.x+8,pr.y-24,4,24);
+    g.fillStyle='#7a5a38';g.fillRect(pr.x-12,pr.y-27,24,5);
+    g.fillStyle='#caa54a';g.fillRect(pr.x-6,pr.y-26,12,3);
+    g.fillStyle='rgba(255,225,150,0.25)';g.fillRect(pr.x-8,pr.y-22,16,22);
+   }}});
   else if(pr.type==='torch')ents.push({y:pr.y,d:()=>{
    g.fillStyle='#5a4430';g.fillRect(pr.x-1,pr.y-6,2,6);
    const f=Math.sin(G.time*10+pr.fl)>0;
@@ -2342,13 +2490,21 @@ function drawHUD(){
  // combo
  if(P.combo>2)txtO(P.combo+' COMBO',8,top+37,9,'#ff9040',false,true);
  // biome label
- txtO(G.surface?curB().name:curB().name+(G.floor===CFG.floorsPerBiome?' · BOSS':' · '+(G.floor+1)),VW/2,VH-6,7,'#8a86a8','center');
+ txtO(G.town?TOWNS[G.biome]+' · safe haven':curB().name+(G.floor===CFG.floorsPerBiome?' · BOSS':' · leg '+(G.floor+1)),VW/2,VH-6,7,'#8a86a8','center');
  // minimap
  const MM=44,mx=VW-MM-6,my=top;
- if(G.surface){
+ if(curB().over||G.town){
   hudBtn.pause={x:mx+MM/2,y:my+10,r:9};
   g.fillStyle='rgba(30,28,48,0.7)';g.beginPath();g.arc(hudBtn.pause.x,hudBtn.pause.y,8,0,TAU);g.fill();
   txtO('II',hudBtn.pause.x,hudBtn.pause.y+0.5,7,'#c8c4e8','center',true);
+  if(!G.town&&G.floor<CFG.floorsPerBiome&&G.legFrom>G.legTo){
+   const prog=clamp((G.legFrom-P.y)/(G.legFrom-G.legTo),0,1);
+   const dest=G.floor===CFG.floorsPerBiome-1?
+    (G.biome>=CFG.biomes-1?'THE WARDEN':TOWNS[G.biome]):'waystone';
+   g.fillStyle='rgba(10,8,16,0.6)';g.fillRect(mx-14,my+24,MM+14,5);
+   g.fillStyle='#8cdcff';g.fillRect(mx-13,my+25,(MM+12)*prog,3);
+   txtO('to '+dest+' '+((prog*100)|0)+'%',mx+MM-58+29,my+38,6,'#a8cce0','right');
+  }
  }else{
  g.fillStyle='rgba(10,8,16,0.55)';g.fillRect(mx,my,MM,MM);
  g.strokeStyle='rgba(150,148,200,0.5)';g.strokeRect(mx+0.5,my+0.5,MM-1,MM-1);
@@ -2479,7 +2635,7 @@ function drawTitle(){
  });
  const bw=170,bx=VW/2-bw/2;let by=VH*0.44;
  const run=loadRun();
- if(run){btn(bx,by,bw,30,'CONTINUE RUN',()=>{resumeRun(run)},{col:'rgba(70,50,30,0.95)',border:'#ffd860',sub:CFG.classes[run.cls].name+' · '+(run.surface?'THE SURFACE':BIOMES[run.biome].name)});by+=38}
+ if(run){btn(bx,by,bw,30,'CONTINUE RUN',()=>{resumeRun(run)},{col:'rgba(70,50,30,0.95)',border:'#ffd860',sub:CFG.classes[run.cls].name+' · '+(run.town?TOWNS[run.biome]:BIOMES[run.biome].name)});by+=38}
  btn(bx,by,bw,28,'NEW RUN',()=>{G.scene='pick';G.pickDaily=false});by+=34;
  btn(bx,by,bw,24,'DAILY RUN',()=>{G.scene='pick';G.pickDaily=true},
   {sub:meta.best.daily[dailyKey()]?'today: depth '+meta.best.daily[dailyKey()]:null});by+=30+(meta.best.daily[dailyKey()]?4:0);
@@ -2740,7 +2896,7 @@ function boot(){
 window.DG={get G(){return G},get P(){return P},startRun,genFloor,updateGame,nextFloor,
  loadRun,saveRun,resumeRun,rollCards,SPELLS,CARDS,POTS,spawnEnemy,render,
  pickCard(i){if(G.scene==='cards'&&G.cardChoices[i]){G.cardChoices[i].go();G.scene='game'}},
- get meta(){return meta},CFG,
+ get meta(){return meta},CFG,enterTown,leaveTown,TOWNS,
  get enemies(){return enemies},get props(){return props},get pickups(){return pickups},
  get tiles(){return tiles},get mapW(){return mapW},get mapH(){return mapH},
  spawnGenerator,explosion,hitEnemy};
