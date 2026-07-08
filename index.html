@@ -212,9 +212,22 @@ function musicTick(){
 const SPR={};
 function mkCv(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c}
 function spriteFromMap(rows,pal){
- const w=Math.max(...rows.map(r=>r.length)),h=rows.length,c=mkCv(w,h),x=c.getContext('2d');
+ const w=Math.max(...rows.map(r=>r.length)),h=rows.length;
+ const solid=[];
+ for(let j=0;j<h;j++){solid[j]=[];
+  for(let i=0;i<rows[j].length;i++)solid[j][i]=rows[j][i]!=='.'&&!!pal[rows[j][i]]}
+ const c=mkCv(w+2,h+2),x=c.getContext('2d');
+ // dark outline first
+ x.fillStyle='#0d0a16';
+ for(let j=0;j<h;j++)for(let i=0;i<w;i++){
+  if(!(solid[j]&&solid[j][i]))continue;
+  for(const [di,dj] of [[1,0],[-1,0],[0,1],[0,-1]]){
+   const ni=i+di,nj=j+dj;
+   if(!(solid[nj]&&solid[nj][ni]))x.fillRect(ni+1,nj+1,1,1);
+  }
+ }
  for(let j=0;j<h;j++)for(let i=0;i<rows[j].length;i++){const ch=rows[j][i];
-  if(ch!=='.'&&pal[ch]){x.fillStyle=pal[ch];x.fillRect(i,j,1,1)}}
+  if(ch!=='.'&&pal[ch]){x.fillStyle=pal[ch];x.fillRect(i+1,j+1,1,1)}}
  return c;
 }
 function flipped(c){const f=mkCv(c.width,c.height),x=f.getContext('2d');x.translate(c.width,0);x.scale(-1,1);x.drawImage(c,0,0);return f}
@@ -591,7 +604,8 @@ let G={scene:'title',inRun:false,seed:0,daily:false,biome:0,floor:0,depth:0,
  lavaFrame:0,lavaT:0,spikeT:0,titleT:0,deathStats:null,camX:0,camY:0,shopMsgT:0,zoom:1,zoomT:1,town:false,cine:null,legFrom:0,legTo:0,bounty:null,clouds:[],flash:0};
 let P=null;
 let tiles=null,mapW=0,mapH=0,rooms=[],roomIdx=null,floorCvs=[null,null],lights=[],pools=[];
-let enemies=[],shots=[],eshots=[],pickups=[],props=[],parts=[],dnums=[];
+let enemies=[],shots=[],eshots=[],pickups=[],props=[],parts=[],dnums=[],rings=[];
+function addRing(x,y,col,r0,r1,life){rings.push({x,y,col,r:r0,r1,life,max:life})}
 
 /* ---------------- DUNGEON GENERATION ---------------- */
 const T_WALL=0,T_FLOOR=1,T_HAZ=2,T_CRACK=3,T_EXIT=4;
@@ -646,7 +660,7 @@ function randInRoom(r,pad){pad=pad||2;
 
 function genFloor(){
  R=mulberry32((G.seed^((G.depth+1)*2654435761))>>>0);
- enemies=[];shots=[];eshots=[];pickups=[];props=[];pools=[];lights=[];dnums=[];
+ enemies=[];shots=[];eshots=[];pickups=[];props=[];pools=[];lights=[];dnums=[];rings=[];
  G.bossFight=false;G.boss=null;
  const isBoss=G.floor===CFG.floorsPerBiome;
  const B=curB();
@@ -1159,6 +1173,7 @@ function killEnemy(e){
   else if(rc(0.06))pickups.push({type:'pot:heal',x:e.x,y:e.y,r:6,bob:0});
   return;
  }
+ addRing(e.x,e.y-e.h/2,e.elite?'#ffd860':'#ffffff',3,e.elite?26:16,0.32);
  G.kills++;meta.stats.kills++;
  if(G.bounty&&!e.boss){G.bounty.got++;
   if(G.bounty.got>=G.bounty.need){
@@ -2284,6 +2299,9 @@ function updateGame(dt){
  for(let i=parts.length-1;i>=0;i--){const p=parts[i];
   p.life-=dt;if(p.life<=0){parts.splice(i,1);continue}
   p.vy+=(p.grav||0)*dt;p.x+=p.vx*dt;p.y+=p.vy*dt}
+ for(let i=rings.length-1;i>=0;i--){const rg=rings[i];
+  rg.life-=dt;rg.r=lerp(rg.r,rg.r1,dt*10);
+  if(rg.life<=0)rings.splice(i,1)}
  for(let i=dnums.length-1;i>=0;i--){const d=dnums[i];
   d.life-=dt;d.y+=d.vy*dt;d.vy*=0.92;if(d.life<=0)dnums.splice(i,1)}
  for(let i=toasts.length-1;i>=0;i--){toasts[i].life-=dt;if(toasts[i].life<=0)toasts.splice(i,1)}
@@ -2521,7 +2539,22 @@ function drawWorld(){
  ents.push({y:P.y,d:drawPlayer});
  ents.sort((a,b)=>a.y-b.y);
  for(const en of ents)en.d();
- // shots
+ // impact rings
+ for(const rg of rings){
+  g.globalAlpha=clamp(rg.life/rg.max,0,1)*0.8;
+  g.strokeStyle=rg.col;g.lineWidth=2;
+  g.beginPath();g.arc(rg.x,rg.y,rg.r,0,TAU);g.stroke();
+ }
+ g.globalAlpha=1;g.lineWidth=1;
+ // shots (with additive glow halo)
+ g.globalCompositeOperation='lighter';
+ for(const s of shots){
+  g.globalAlpha=0.28;
+  g.fillStyle=s.col;
+  g.beginPath();g.arc(s.x,s.y,s.size*3,0,TAU);g.fill();
+ }
+ g.globalAlpha=1;
+ g.globalCompositeOperation='source-over';
  for(const s of shots){
   g.fillStyle=s.col;
   if(s.spear){g.save();g.translate(s.x,s.y);g.rotate(Math.atan2(s.vy,s.vx));
@@ -2683,6 +2716,20 @@ function drawLighting(sx,sy,z){
  for(const pl of pools)if(pl.type==='lava')hole(pl.x,pl.y,26,0.5);
  lg.globalCompositeOperation='source-over';
  g.drawImage(lightCv,0,0);
+ // warm bloom over flames
+ g.save();
+ g.globalCompositeOperation='lighter';
+ let nb=0;
+ for(const li of lights){
+  if(!li.flick||nb>14)continue;nb++;
+  const x=(li.x-G.camX+sx-VW/2)*z+VW/2,y=(li.y-G.camY+sy-VH/2)*z+VH/2;
+  if(x<-40||y<-40||x>VW+40||y>VH+40)continue;
+  const pulse=0.10+0.045*Math.sin(G.time*8+li.x);
+  g.globalAlpha=pulse;
+  g.fillStyle=li.col?('rgb('+li.col+')'):'rgb(255,170,70)';
+  g.beginPath();g.arc(x,y,20*z,0,TAU);g.fill();
+ }
+ g.restore();
 }
 
 /* ---------------- HUD ---------------- */
@@ -2705,8 +2752,15 @@ function drawHUD(){
   heart(8+(i%8)*11,top+((i/8)|0)*10,hpIn>=2?2:hpIn===1?1:0);
  }
  if(P.ward>0)txtO('+'+P.ward,8+hearts%8*11+((hearts>8)?0:2),top+4,8,'#ffe9a0');
+ // subtle backing for the stat cluster
+ g.fillStyle='rgba(8,6,16,0.42)';
+ rrect(4,top-4,178,(P.maxhp>16?46:36),5);g.fill();
  // gold & keys & equipment
- txtO('◆'+fmtNum(P.gold),8,top+24,9,'#ffd860');
+ {const cy2=top+21;
+  g.fillStyle='#b08820';g.beginPath();g.arc(11,cy2+2,4,0,TAU);g.fill();
+  g.fillStyle='#ffd860';g.beginPath();g.arc(10,cy2+1.5,3.5,0,TAU);g.fill();
+  g.fillStyle='#fff0b0';g.fillRect(8,cy2-0.5,2,2);}
+ txtO(fmtNum(P.gold),18,top+24,9,'#ffd860');
  drawWeaponIcon(P.cls,102,top+23,0.9,'#e8d8a0');
  for(let i=0;i<4;i++){g.fillStyle=i<P.tier?'#ffd860':'#3a3450';g.fillRect(110+i*5,top+21,3,5)}
  if(P.armor>0){drawShieldIcon(140,top+23,0.85,'#b8cce8');
@@ -2758,6 +2812,9 @@ function drawHUD(){
   g.beginPath();g.arc(x,y,r,0,TAU);g.stroke();g.globalAlpha=1;
   if(cd>0&&cdMax>0){g.fillStyle='rgba(255,255,255,0.15)';
    g.beginPath();g.moveTo(x,y);g.arc(x,y,r-2,-Math.PI/2,-Math.PI/2+TAU*(cd/cdMax));g.closePath();g.fill()}
+  if(cd<=0){g.globalAlpha=0.16+0.12*Math.sin(G.time*5);
+   g.strokeStyle=col;g.lineWidth=3;g.beginPath();g.arc(x,y,r+2.5,0,TAU);g.stroke();
+   g.globalAlpha=1;g.lineWidth=1}
   txtO(label,x,y+0.5,r*0.7,cd>0?'#777':col,'center',true);
   if(sub)txtO(sub,x,y+r+8,7,'#c8c4e8','center');
  }
@@ -2910,7 +2967,9 @@ function drawPick(){
   txt('HP '+(c.hp/2)+' DMG '+c.dmg+' SPD '+Math.round(c.spd),x+42,y+44,7,un?'#a8a4c8':'#555');
   if(un){
    uiBtns.push({x,y,w:cw,h:ch,cb:()=>{startRun(id,G.pickDaily?dailySeed():undefined,G.pickDaily)}});
-   txt('spell: '+SPELLS[c.spell].name,x+10,y+ch-30,7,'#8a86a8');
+   drawWeaponIcon(id,x+cw-18,y+18,1.15,c.col);
+   g.fillStyle=SPELLS[c.spell].col;g.fillRect(x+10,y+ch-34,6,6);
+   txt('spell: '+SPELLS[c.spell].name,x+20,y+ch-30,7,'#8a86a8');
    txtO('TAP TO PLAY',x+cw/2,y+ch-12,8,'#ffe080','center',true);
   }else{
    btn(x+10,y+ch-30,cw-20,20,'UNLOCK ◆'+c.price,()=>{
